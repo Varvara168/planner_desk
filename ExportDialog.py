@@ -1,14 +1,17 @@
 from PyQt6.QtWidgets import (QDialog, QMessageBox, QFileDialog, QInputDialog)
 from PyQt6.QtCore import QDate
 from ui.export_dialog import Ui_ExportDialog
-from db import (export_tasks_to_json, import_tasks_from_json, 
-                save_template, get_available_templates, get_tasks_by_date)
+import os 
+from datetime import datetime
+
+from db import (export_tasks_to_json, import_tasks_from_json, save_template, get_available_templates,  get_tasks_by_date)
 
 class ExportDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, user_id=1):
         super().__init__(parent)
         self.ui = Ui_ExportDialog()
         self.ui.setupUi(self)
+        self.user_id = user_id
         
         self.selected_file = None
         
@@ -23,6 +26,7 @@ class ExportDialog(QDialog):
     
     def export_tasks(self):
         """Экспорт задач в JSON"""
+        # Открываем диалог выбора места сохранения
         filename, _ = QFileDialog.getSaveFileName(
             self, 
             'Экспорт задач', 
@@ -31,14 +35,18 @@ class ExportDialog(QDialog):
         )
         
         if filename:
-            if export_tasks_to_json(filename):
+            # Сохраняем туда, куда указал пользователь
+            if export_tasks_to_json(self.user_id, filename):
                 QMessageBox.information(self, 'Успех', 'Задачи успешно экспортированы')
             else:
                 QMessageBox.warning(self, 'Ошибка', 'Не удалось экспортировать задачи')
-    
+        else:
+            # Если пользователь отменил диалог, просто выходим
+            QMessageBox.information(self, 'Отмена', 'Экспорт отменён пользователем')
+
     def create_backup(self):
         """Создание автоматического бэкапа"""
-        if export_tasks_to_json():
+        if export_tasks_to_json(self.user_id):
             QMessageBox.information(self, 'Успех', 'Автоматический бэкап создан')
         else:
             QMessageBox.warning(self, 'Ошибка', 'Не удалось создать бэкап')
@@ -54,7 +62,8 @@ class ExportDialog(QDialog):
         
         if filename:
             self.selected_file = filename
-            self.ui.selectedFileLabel.setText(f"Выбран: {filename.split('/')[-1]}")
+            self.ui.selectedFileLabel.setText(f"Выбран: {os.path.basename(filename)}")
+
     
     def import_tasks(self):
         """Импорт задач из JSON"""
@@ -70,7 +79,7 @@ class ExportDialog(QDialog):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            if import_tasks_from_json(self.selected_file):
+            if import_tasks_from_json(self.user_id, self.selected_file):
                 QMessageBox.information(self, 'Успех', 'Задачи успешно импортированы')
                 self.selected_file = None
                 self.ui.selectedFileLabel.setText("Файл не выбран")
@@ -87,7 +96,7 @@ class ExportDialog(QDialog):
         
         if ok and template_name.strip():
             # Получаем задачи на сегодня для шаблона
-            today_tasks = get_tasks_by_date(QDate.currentDate())
+            today_tasks = get_tasks_by_date(self.user_id, QDate.currentDate())
             template_data = []
             
             for task in today_tasks:

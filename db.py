@@ -33,20 +33,23 @@ def init_db():
     
     # Таблица задач с привязкой к пользователю
     cursor.execute('''
-        CREATE TABLE IF NOT EXISTS tasks (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            user_id INTEGER NOT NULL,
-            title TEXT NOT NULL,
-            task_date TEXT NOT NULL,
-            description TEXT,
-            priority INTEGER DEFAULT 1,
-            is_mandatory BOOLEAN DEFAULT FALSE,
-            done BOOLEAN DEFAULT FALSE,
-            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (user_id) REFERENCES users (id)
-        )
-    ''')
+    CREATE TABLE IF NOT EXISTS tasks (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        title TEXT NOT NULL,
+        task_date TEXT NOT NULL,
+        description TEXT,
+        priority INTEGER DEFAULT 1,
+        is_mandatory BOOLEAN DEFAULT FALSE,
+        done BOOLEAN DEFAULT FALSE,
+        category_id INTEGER,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users (id),
+        FOREIGN KEY (category_id) REFERENCES categories (id)
+    )
+''')
+
     
     # Таблица категорий
     cursor.execute('''
@@ -60,6 +63,19 @@ def init_db():
             UNIQUE(user_id, name)
         )
     ''')
+    
+    # Таблица шаблонов задач
+    cursor.execute('''
+    CREATE TABLE IF NOT EXISTS templates (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        name TEXT NOT NULL,
+        data TEXT NOT NULL,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(user_id, name),
+        FOREIGN KEY (user_id) REFERENCES users (id)
+    )
+''')
     
     # Таблица настроек пользователей
     cursor.execute('''
@@ -122,9 +138,10 @@ def init_db():
 
 # ========== ФУНКЦИИ ДЛЯ РАБОТЫ С ПОЛЬЗОВАТЕЛЯМИ ==========
 
-def hash_password(password):
-    """Хэширование пароля"""
-    return hashlib.sha256(password.encode()).hexdigest()
+def hash_password(password: str) -> str:
+    salt = "planner_salt_v1"
+    return hashlib.sha256((password + salt).encode()).hexdigest()
+
 
 def create_user(username, password):
     """Создание нового пользователя"""
@@ -273,16 +290,16 @@ def update_user_settings(user_id, auto_backup=None, notifications=None, week_sta
 
 # ========== ФУНКЦИИ ДЛЯ РАБОТЫ С ЗАДАЧАМИ ==========
 
-def add_task(title, task_date, user_id, description="", priority=1, is_mandatory=False):
+def add_task(title, task_date, user_id, description="", category_id=None, priority=1, is_mandatory=False):
     """Добавление задачи"""
     conn = sqlite3.connect(get_db_path())
     cursor = conn.cursor()
     
     try:
         cursor.execute('''
-            INSERT INTO tasks (user_id, title, task_date, description, priority, is_mandatory)
-            VALUES (?, ?, ?, ?, ?, ?)
-        ''', (user_id, title, task_date, description, priority, is_mandatory))
+            INSERT INTO tasks (user_id, title, task_date, description, category_id, priority, is_mandatory)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+        ''', (user_id, title, task_date, description, category_id, priority, is_mandatory))
         
         task_id = cursor.lastrowid
         conn.commit()
@@ -293,6 +310,8 @@ def add_task(title, task_date, user_id, description="", priority=1, is_mandatory
         return None
     finally:
         conn.close()
+
+
 
 def get_tasks_by_date(date_obj, user_id):
     """Получение задач по дате для конкретного пользователя"""
@@ -459,6 +478,82 @@ def toggle_task_status(task_id, user_id):
     finally:
         conn.close()
 
+def save_template(user_id, name, template_data):
+    """Сохранение шаблона задач"""
+    conn = sqlite3.connect(get_db_path())
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            '''
+            INSERT OR REPLACE INTO templates (user_id, name, data)
+            VALUES (?, ?, ?)
+            ''',
+            (user_id, name, json.dumps(template_data, ensure_ascii=False))
+        )
+        conn.commit()
+        return True
+    except Exception as e:
+        print(f"Ошибка сохранения шаблона: {e}")
+        return False
+    finally:
+        conn.close()
+
+def get_available_templates(user_id):
+    """Получение списка шаблонов пользователя"""
+    conn = sqlite3.connect(get_db_path())
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            'SELECT name FROM templates WHERE user_id = ? ORDER BY name',
+            (user_id,)
+        )
+        return [row[0] for row in cursor.fetchall()]
+    except Exception as e:
+        print(f"Ошибка получения шаблонов: {e}")
+        return []
+    finally:
+        conn.close()
+
+
+def get_task(task_id, user_id):
+    """Получение одной задачи по ID с проверкой пользователя"""
+    conn = sqlite3.connect(get_db_path())
+    cursor = conn.cursor()
+
+    try:
+        cursor.execute(
+            '''
+            SELECT * FROM tasks
+            WHERE id = ? AND user_id = ?
+            ''',
+            (task_id, user_id)
+        )
+
+        task = cursor.fetchone()
+        if not task:
+            return None
+
+        return {
+            'id': task[0],
+            'user_id': task[1],
+            'title': task[2],
+            'task_date': task[3],
+            'description': task[4],
+            'priority': task[5],
+            'is_mandatory': bool(task[6]),
+            'done': bool(task[7]),
+            'created_at': task[8],
+            'updated_at': task[9]
+        }
+    except Exception as e:
+        print(f"Ошибка при получении задачи: {e}")
+        return None
+    finally:
+        conn.close()
+
+
 def toggle_mandatory_status(task_id, user_id):
     """Переключение статуса обязательности задачи"""
     conn = sqlite3.connect(get_db_path())
@@ -609,21 +704,29 @@ def get_task_stats(user_id):
 
 def export_tasks_to_json(user_id, filename=None):
     """Экспорт задач пользователя в JSON файл"""
+    export_dir = "data/exports"
+    os.makedirs(export_dir, exist_ok=True)
+
+    timestamp = datetime.now().strftime('%Y%m%d_%H%M%S')
+
     if not filename:
-        filename = f"data/exports/backup_{user_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.json"
-    
+        # Если имени файла нет, генерируем безопасное
+        filename = f"backup_{user_id}_{timestamp}.json"
+    else:
+        # Если передано имя/путь, берем только имя файла
+        filename = os.path.basename(filename)
+
+    file_path = os.path.join(export_dir, filename)
+
     conn = sqlite3.connect(get_db_path())
     cursor = conn.cursor()
-    
+
     try:
-        # Получаем все задачи пользователя
         cursor.execute('SELECT * FROM tasks WHERE user_id = ? ORDER BY task_date', (user_id,))
         tasks = cursor.fetchall()
-        
-        # Получаем категории пользователя
+
         categories = get_categories(user_id)
-        
-        # Формируем данные для экспорта
+
         export_data = {
             'export_date': datetime.now().isoformat(),
             'user_id': user_id,
@@ -637,12 +740,11 @@ def export_tasks_to_json(user_id, filename=None):
                 'created_at': task[8], 'updated_at': task[9]
             } for task in tasks]
         }
-        
-        # Сохраняем в файл
-        with open(filename, 'w', encoding='utf-8') as f:
+
+        with open(file_path, 'w', encoding='utf-8') as f:
             json.dump(export_data, f, ensure_ascii=False, indent=2)
-        
-        print(f"Задачи пользователя {user_id} экспортированы в {filename}")
+
+        print(f"Задачи пользователя {user_id} экспортированы в {file_path}")
         return True
     except Exception as e:
         print(f"Ошибка при экспорте задач: {e}")

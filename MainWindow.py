@@ -6,15 +6,16 @@ from TaskDialog import TaskDialog
 from WeekDialog import WeekDialog
 from CategoryDialog import CategoryDialog
 from ExportDialog import ExportDialog
-from db import init_db, clear_all_tasks, get_task_stats, get_setting, set_setting
+from db import init_db, clear_all_tasks, get_task_stats, get_user_settings, update_user_settings
 import os
 
 class MainWindow(QMainWindow):
-    def __init__(self):
+    def __init__(self, parent=None, user_id=1):
         super().__init__()
         
         # Создаем папки для данных
         self.create_data_folders()
+        self.user_id = user_id
         
         # Инициализация базы данных ПЕРВЫМ делом
         try:
@@ -65,7 +66,7 @@ class MainWindow(QMainWindow):
         self.setup_enhanced_ui()
 
         # Создаём диалоговые окна
-        self.task_dialog = TaskDialog(self)
+        self.task_dialog = TaskDialog(user_id=self.user_id)
         self.week_dialog = WeekDialog(self)
         self.category_dialog = CategoryDialog(self)
         self.export_dialog = ExportDialog(self)
@@ -153,11 +154,11 @@ class MainWindow(QMainWindow):
 
     def auto_backup(self):
         """Автоматическое создание бэкапа"""
-        auto_backup = get_setting('auto_backup', 'true')
-        if auto_backup.lower() == 'true':
+        settings = get_user_settings(self.user_id)
+        if settings and settings.get('auto_backup', True):
             from db import export_tasks_to_json
-            backup_file = f"data/backups/auto_backup_{QDate.currentDate().toString('yyyyMMdd')}.json"
-            if export_tasks_to_json(backup_file):
+            backup_file = f"data/backups/auto_backup_{self.user_id}_{QDate.currentDate().toString('yyyyMMdd')}.json"
+            if export_tasks_to_json(self.user_id, backup_file):
                 print("Автоматический бэкап создан")
             else:
                 print("Не удалось создать автоматический бэкап")
@@ -176,7 +177,7 @@ class MainWindow(QMainWindow):
 
     def show_settings(self):
         """Показать настройки"""
-        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QLabel, QCheckBox, QPushButton
+        from PyQt6.QtWidgets import QDialog, QVBoxLayout, QHBoxLayout, QCheckBox, QPushButton, QMessageBox
         
         dialog = QDialog(self)
         dialog.setWindowTitle("Настройки")
@@ -185,15 +186,19 @@ class MainWindow(QMainWindow):
         
         layout = QVBoxLayout(dialog)
         
+        # Получаем настройки текущего пользователя
+        user_id = 1  # TODO: замените на текущего пользователя
+        settings = get_user_settings(user_id) or {}
+        
         # Настройки
         auto_backup_cb = QCheckBox("Автоматический бэкап при запуске")
-        auto_backup_cb.setChecked(get_setting('auto_backup', 'true') == 'true')
+        auto_backup_cb.setChecked(settings.get('auto_backup', True))
         
         notifications_cb = QCheckBox("Уведомления о задачах")
-        notifications_cb.setChecked(get_setting('notifications', 'true') == 'true')
+        notifications_cb.setChecked(settings.get('notifications', True))
         
         week_start_monday = QCheckBox("Неделя начинается с понедельника")
-        week_start_monday.setChecked(get_setting('week_start', 'monday') == 'monday')
+        week_start_monday.setChecked(settings.get('week_start', 'monday') == 'monday')
         
         layout.addWidget(auto_backup_cb)
         layout.addWidget(notifications_cb)
@@ -206,9 +211,12 @@ class MainWindow(QMainWindow):
         cancel_btn = QPushButton("Отмена")
         
         def save_settings():
-            set_setting('auto_backup', 'true' if auto_backup_cb.isChecked() else 'false')
-            set_setting('notifications', 'true' if notifications_cb.isChecked() else 'false')
-            set_setting('week_start', 'monday' if week_start_monday.isChecked() else 'sunday')
+            update_user_settings(
+                user_id,
+                auto_backup=auto_backup_cb.isChecked(),
+                notifications=notifications_cb.isChecked(),
+                week_start='monday' if week_start_monday.isChecked() else 'sunday'
+            )
             dialog.accept()
             QMessageBox.information(self, 'Успех', 'Настройки сохранены')
         
@@ -221,9 +229,10 @@ class MainWindow(QMainWindow):
         
         dialog.exec()
 
+
     def show_statistics(self):
         """Показать расширенную статистику"""
-        stats = get_task_stats()
+        stats = get_task_stats(self.user_id)
         
         stats_text = f"""
 📊 Детальная статистика:
@@ -311,7 +320,7 @@ class MainWindow(QMainWindow):
 
     def show_startup_stats(self):
         """Показать статистику при запуске"""
-        stats = get_task_stats()
+        stats = get_task_stats(self.user_id)
         self.ui.statusbar.showMessage(
             f"Задачи: всего {stats['total']} | выполнено {stats['completed']} | сегодня {stats['today']}"
         )
@@ -419,7 +428,7 @@ class MainWindow(QMainWindow):
         if self.is_dialog_open:
             self.update_task_dialog(today)
         
-        stats = get_task_stats()
+        stats = get_task_stats(self.user_id)
         self.ui.statusbar.showMessage(f"Задач на сегодня: {stats['today']}")
         
         self.update_calendar_styles()
@@ -436,7 +445,7 @@ class MainWindow(QMainWindow):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            if clear_all_tasks():
+            if clear_all_tasks(self.user_id):
                 QMessageBox.information(self, 'Успех', 'Все задачи удалены')
                 self.show_startup_stats()
                 if self.is_dialog_open:

@@ -1,0 +1,64 @@
+{
+  "export_date": "2025-12-15T16:16:15.080906",
+  "user_id": 1,
+  "version": "2.0",
+  "tasks_count": 2,
+  "categories": [
+    {
+      "id": 6,
+      "name": "Другое",
+      "color": "#a29bfe"
+    },
+    {
+      "id": 3,
+      "name": "Здоровье",
+      "color": "#45b7d1"
+    },
+    {
+      "id": 2,
+      "name": "Личное",
+      "color": "#4ecdc4"
+    },
+    {
+      "id": 4,
+      "name": "Обучение",
+      "color": "#96ceb4"
+    },
+    {
+      "id": 1,
+      "name": "Работа",
+      "color": "#ff6b6b"
+    },
+    {
+      "id": 5,
+      "name": "Семья",
+      "color": "#feca57"
+    }
+  ],
+  "tasks": [
+    {
+      "id": 1,
+      "user_id": 1,
+      "title": "6yth564",
+      "task_date": "2025-12-15",
+      "description": "",
+      "priority": 3,
+      "is_mandatory": false,
+      "done": false,
+      "created_at": null,
+      "updated_at": "2025-12-15 11:59:05"
+    },
+    {
+      "id": 2,
+      "user_id": 1,
+      "title": "y67ujtry",
+      "task_date": "2025-12-16",
+      "description": "",
+      "priority": 1,
+      "is_mandatory": false,
+      "done": false,
+      "created_at": null,
+      "updated_at": "2025-12-15 11:59:16"
+    }
+  ]
+}

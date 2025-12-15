@@ -5,11 +5,12 @@ from ui.category_dialog import Ui_CategoryDialog
 from db import get_categories, add_category, update_category, delete_category
 
 class CategoryDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, user_id=None):
         super().__init__(parent)
         self.ui = Ui_CategoryDialog()
         self.ui.setupUi(self)
-        
+        self.user_id = user_id
+             
         self.selected_color = "#007acc"
         
         # Подключаем кнопки
@@ -25,7 +26,7 @@ class CategoryDialog(QDialog):
     def load_categories(self):
         """Загрузка списка категорий"""
         self.ui.categoriesList.clear()
-        categories = get_categories()
+        categories = get_categories(self.user_id)
         
         for category in categories:
             item = QListWidgetItem()

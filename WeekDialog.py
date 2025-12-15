@@ -8,10 +8,11 @@ from ui.week_dialog import Ui_WeekDialog
 from db import get_tasks_by_week, add_task, update_task, remove_task, toggle_task_status, toggle_mandatory_status
 
 class WeekDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, user_id=1):
         super().__init__(parent)
         self.ui = Ui_WeekDialog()
         self.ui.setupUi(self)
+        self.user_id = user_id
         
         self.current_date = QDate.currentDate()
         self.week_layout = self.ui.weekLayout
@@ -27,7 +28,7 @@ class WeekDialog(QDialog):
         """Загрузка и отображение задач на неделю"""
         self.clear_week_layout()
         
-        self.tasks_by_day = get_tasks_by_week(self.current_date)
+        self.tasks_by_day = get_tasks_by_week(self.current_date, self.user_id)
         
         # Обновляем заголовок
         end_date = self.current_date.addDays(6)
@@ -400,12 +401,15 @@ class WeekDialog(QDialog):
                 return
             
             add_task(
+                user_id=self.user_id,
                 title=title,
-                date=date.toString('yyyy-MM-dd'),
+                task_date=date.toString('yyyy-MM-dd'),
                 description=desc_edit.toPlainText(),
+                category_id=None,
                 priority=priority_combo.currentData(),
                 is_mandatory=mandatory_check.isChecked()
             )
+
             dialog.accept()
             self.load_week_tasks()
         

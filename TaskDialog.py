@@ -6,15 +6,14 @@ from PyQt6.QtCore import Qt, QDate
 from PyQt6 import QtGui
 from ui.taskdialog import Ui_Dialog
 from db import (add_task, get_tasks_by_date, remove_task, toggle_task_status, 
-                update_task, add_mandatory_task_template, get_mandatory_task_templates, 
-                remove_mandatory_task_template, toggle_mandatory_status, get_categories,
-                get_task)
+                update_task, toggle_mandatory_status, get_categories, get_task_stats, get_task)
 
 class TaskDialog(QDialog):
-    def __init__(self, parent=None):
+    def __init__(self, parent=None, user_id=1):
         super().__init__(parent)
         self.ui = Ui_Dialog()
         self.ui.setupUi(self)
+        self.user_id = user_id
         
         self.current_date = QDate.currentDate()
         
@@ -67,7 +66,8 @@ class TaskDialog(QDialog):
         
     def load_categories(self):
         """Загрузка категорий для комбобокса"""
-        self.categories = get_categories()
+        self.categories = get_categories(self.user_id)
+
         
     def set_date(self, date):
         """Установка даты и загрузка задач"""
@@ -78,7 +78,7 @@ class TaskDialog(QDialog):
     def load_tasks(self):
         """Загрузка задач для текущей даты"""
         self.ui.listWidget.clear()
-        tasks = get_tasks_by_date(self.current_date)
+        tasks = get_tasks_by_date(self.current_date, self.user_id)
         
         for task in tasks:
             item = QListWidgetItem()
@@ -201,14 +201,15 @@ class TaskDialog(QDialog):
             return
         
         task_id = add_task(
+            user_id=self.user_id,
             title=title.strip(),
-            deadline=self.current_date.toString('yyyy-MM-dd'),
+            task_date=self.current_date.toString('yyyy-MM-dd'),
             description=description.strip(),
             category_id=category_id,
             priority=priority,
             is_mandatory=is_mandatory
         )
-        
+
         if task_id:
             dialog.accept()
             self.load_tasks()
@@ -222,7 +223,8 @@ class TaskDialog(QDialog):
             return
             
         task_id = item.data(Qt.ItemDataRole.UserRole)
-        task_info = get_task(task_id)
+        task_info = get_task(task_id, self.user_id)
+
         
         if not task_info:
             return
@@ -368,7 +370,6 @@ class TaskDialog(QDialog):
     
     def show_stats(self):
         """Показ статистики"""
-        from db import get_task_stats
         stats = get_task_stats()
         
         stats_text = f"""
@@ -410,7 +411,7 @@ class TaskDialog(QDialog):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            remove_task(task_id)
+            remove_task(task_id, self.user_id)
             self.load_tasks()
     
     def toggle_task_done(self, index):
@@ -427,8 +428,7 @@ class TaskDialog(QDialog):
         self.load_tasks()
     
     def toggle_mandatory_status(self, task_info, item):
-        """Переключение статуса обязательности задачи"""
-        from db import toggle_mandatory_status
+        """Переключение статуса обязательной задачи"""
         new_status = toggle_mandatory_status(task_info['id'])
         if new_status is not False:
             self.load_tasks()
