@@ -17,24 +17,21 @@ def create_task_editor_dialog(parent, mode='add', task_data=None, date=None, use
         dialog.setWindowTitle("Редактировать задачу")
     
     dialog.setModal(True)
-    dialog.resize(400, 400)  # ТОЧНО ваш размер
+    dialog.resize(400, 400) 
     
     layout = QVBoxLayout(dialog)
     
-    # 1. Название задачи (ТОЧНО как у вас)
     title_label = QLabel("Название задачи:")
     title_edit = QLineEdit()
     layout.addWidget(title_label)
     layout.addWidget(title_edit)
     
-    # 2. Описание (ТОЧНО как у вас)
     desc_label = QLabel("Описание:")
     desc_edit = QTextEdit()
     desc_edit.setMaximumHeight(80)
     layout.addWidget(desc_label)
     layout.addWidget(desc_edit)
     
-    # 3. Приоритет (ТОЧНО как у вас)
     priority_label = QLabel("Приоритет:")
     priority_combo = QComboBox()
     priority_combo.addItem("🟢 Низкий", 1)
@@ -43,14 +40,11 @@ def create_task_editor_dialog(parent, mode='add', task_data=None, date=None, use
     layout.addWidget(priority_label)
     layout.addWidget(priority_combo)
     
-    # 4. Категория (ТОЧНО как у вас)
     category_label = QLabel("Категория:")
     category_combo = QComboBox()
     
-    # Загружаем категории пользователя
     categories = get_categories(user_id)
 
-    # Добавляем все категории с цветными иконками (ТОЧНО как у вас)
     for category in categories:
         color = category.get('color', '#007acc')
         icon_pixmap = QPixmap(16, 16)
@@ -61,11 +55,9 @@ def create_task_editor_dialog(parent, mode='add', task_data=None, date=None, use
     layout.addWidget(category_label)
     layout.addWidget(category_combo)
     
-    # 5. Чекбокс обязательности (ТОЧНО как у вас)
     mandatory_check = QCheckBox("🔸 Обязательная задача")
     layout.addWidget(mandatory_check)
     
-    # 6. Заполняем данные если редактируем (ТОЧНО как у вас в edit_task)
     if mode == 'edit' and task_data:
         title_edit.setText(task_data.get('title', ''))
         desc_edit.setPlainText(task_data.get('description', ''))
@@ -88,7 +80,6 @@ def create_task_editor_dialog(parent, mode='add', task_data=None, date=None, use
         # Обязательность
         mandatory_check.setChecked(task_data.get('is_mandatory', False))
     
-    # 7. Кнопки (ТОЧНО как у вас)
     button_layout = QHBoxLayout()
     
     if mode == 'add':
@@ -102,7 +93,6 @@ def create_task_editor_dialog(parent, mode='add', task_data=None, date=None, use
     button_layout.addWidget(cancel_btn)
     layout.addLayout(button_layout)
     
-    # 8. Функция сохранения (ТОЧНАЯ ваша логика)
     def save_task():
         title = title_edit.text().strip()
         if not title:
@@ -110,7 +100,6 @@ def create_task_editor_dialog(parent, mode='add', task_data=None, date=None, use
             return
         
         if mode == 'add':
-            # ТОЧНО как в вашем add_task_to_day
             result = add_task(
                 title=title,
                 task_date=date.toString('yyyy-MM-dd'),
@@ -121,7 +110,6 @@ def create_task_editor_dialog(parent, mode='add', task_data=None, date=None, use
                 is_mandatory=mandatory_check.isChecked()
             )
         else:
-            # ТОЧНО как в вашем save_task (из edit_task)
             result = update_task(
                 user_id=user_id,
                 task_id=task_data['id'],
@@ -141,7 +129,6 @@ def create_task_editor_dialog(parent, mode='add', task_data=None, date=None, use
     save_btn.clicked.connect(save_task)
     cancel_btn.clicked.connect(dialog.reject)
     
-    # 9. Устанавливаем фокус (ТОЧНО как у вас)
     title_edit.setFocus()
     
     return dialog
