@@ -17,14 +17,8 @@ class TaskDialog(QDialog):
         self.user_id = user_id
         
         self.current_date = QDate.currentDate()
-        
-        # Настройка списка задач
         self.ui.listWidget.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
-        
-        # Добавляем новые кнопки
         self.setup_enhanced_ui()
-        
-        # Загружаем категории
         self.load_categories()
         
         # Подключаем кнопки
@@ -105,7 +99,7 @@ class TaskDialog(QDialog):
             item.setText(task_text)
             item.setData(Qt.ItemDataRole.UserRole, task['id'])
             
-            # 1. ПОДКРАШИВАЕМ ЦВЕТОМ КАТЕГОРИИ (весь текст)
+            # цвет
             category_color = task.get('category_color')
             if category_color:
                 try:
@@ -115,10 +109,9 @@ class TaskDialog(QDialog):
                 except Exception as e:
                     print(f"   ❌ Ошибка цвета: {e}")
             
-            # 2. ДОБАВЛЯЕМ ВСПЛЫВАЮЩУЮ ПОДСКАЗКУ С ОПИСАНИЕМ
+            # всплывающая подсказка описания
             description = task.get('description', '')
             if description:
-                # Создаем красивую всплывающую подсказку
                 tooltip_text = f"📝 Описание:\n{description}"
                 
                 # Добавляем информацию о категории
@@ -140,7 +133,6 @@ class TaskDialog(QDialog):
                 
                 item.setToolTip(tooltip_text)
             
-            # 3. СТИЛЬ ДЛЯ ВЫПОЛНЕННЫХ ЗАДАЧ
             if task['done']:
                 font = item.font()
                 font.setStrikeOut(True)
@@ -261,7 +253,7 @@ class TaskDialog(QDialog):
         dialog = create_task_editor_dialog(
             parent=self,
             mode='edit',
-            task_data=task_info,  # ← передаем ВСЕ данные задачи
+            task_data=task_info, 
             user_id=self.user_id
         )
         
@@ -271,7 +263,7 @@ class TaskDialog(QDialog):
 
     def change_priority(self, task_id, priority):
         """Изменение приоритета задачи"""
-        if update_task(self.user_id, task_id, priority=priority):  # ← user_id ПЕРВЫЙ для update_task
+        if update_task(self.user_id, task_id, priority=priority):  
             self.load_tasks()
 
     def update_enhanced_task(self, dialog, task_id, title, description, category_id, priority):
@@ -281,8 +273,8 @@ class TaskDialog(QDialog):
             return
         
         if update_task(
-            user_id=self.user_id,  # ← user_id ПЕРВЫЙ
-            task_id=task_id,      # ← task_id ВТОРОЙ
+            user_id=self.user_id,  
+            task_id=task_id,      
             title=title.strip(),
             description=description.strip(),
             category_id=category_id,
@@ -356,25 +348,23 @@ class TaskDialog(QDialog):
         """Отметка задачи как выполненной/невыполненной"""
         item = self.ui.listWidget.item(index.row())
         task_id = item.data(Qt.ItemDataRole.UserRole)
-        toggle_task_status(task_id, self.user_id)  # ← task_id ПЕРВЫЙ!
+        toggle_task_status(task_id, self.user_id)  
         self.load_tasks()
 
     def toggle_specific_task(self, item):
         """Изменение статуса задачи через контекстное меню"""
         task_id = item.data(Qt.ItemDataRole.UserRole)
-        toggle_task_status(task_id, self.user_id)  # ← task_id ПЕРВЫЙ!
+        toggle_task_status(task_id, self.user_id)  
         self.load_tasks()
     
     def toggle_mandatory_status(self, task_info, item):
         """Переключение статуса обязательности задачи"""
         print(f"🔄 Toggle mandatory для задачи {task_info['id']}")
         
-        # Меняем в БД
         new_status = toggle_mandatory_status(task_info['id'], self.user_id)
         print(f"📊 toggle_mandatory_status вернул: {new_status} (type: {type(new_status)})")
         
-        # ПРОВЕРЯЕМ НА None (ошибка), а не на False!
-        if new_status is not None:  # Изменил с "is not False" на "is not None"
+        if new_status is not None:  
             updated_task_info = get_task(task_info['id'], self.user_id)
             
             if updated_task_info:
@@ -398,4 +388,5 @@ class TaskDialog(QDialog):
     def show(self):
         """Переопределяем show для обновления задач при каждом открытии"""
         self.load_tasks()
+
         super().show()
