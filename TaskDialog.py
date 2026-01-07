@@ -4,6 +4,7 @@ from PyQt6.QtWidgets import (QDialog, QMessageBox, QInputDialog, QListWidgetItem
                              QComboBox, QTextEdit)
 from PyQt6.QtCore import Qt, QDate
 from PyQt6 import QtGui
+from TaskEditorDialog import create_task_editor_dialog
 from ui.taskdialog import Ui_Dialog
 from db import (add_task, get_tasks_by_date, remove_task, toggle_task_status, 
                 update_task, toggle_mandatory_status, get_categories, get_task_stats, get_task)
@@ -80,24 +81,82 @@ class TaskDialog(QDialog):
         self.ui.listWidget.clear()
         tasks = get_tasks_by_date(self.current_date, self.user_id)
         
+        print(f"📋 Всего задач: {len(tasks)}")
+        
         for task in tasks:
             item = QListWidgetItem()
             
-            # Форматируем текст задачи
+            # Получаем данные задачи
             status = "✅" if task['done'] else "❌"
             mandatory_indicator = "🔸 " if task['is_mandatory'] else ""
             priority_indicator = "⚡" * task.get('priority', 1)
-            category_indicator = f"[{task.get('category_name', '')}] " if task.get('category_name') else ""
             
-            task_text = f"{mandatory_indicator}{priority_indicator} {category_indicator}{task['title']} | {status}"
+            # Категория - будет справа
+            category_name = task.get('category_name', '')
+            if category_name:
+                category_text = f" [{category_name}]"
+            else:
+                category_text = ""
             
+            # Формируем текст задачи:
+            # СЛЕВА: индикаторы + название | статус | СПРАВА: категория
+            task_text = f"{mandatory_indicator}{priority_indicator} {task['title']} | {status}{category_text}"
+            print(f"   📝 Задача: '{task_text}' (mandatory={task['is_mandatory']})")
             item.setText(task_text)
             item.setData(Qt.ItemDataRole.UserRole, task['id'])
             
-            # Настраиваем стиль
-            self.style_task_item(item, task)
+            # 1. ПОДКРАШИВАЕМ ЦВЕТОМ КАТЕГОРИИ (весь текст)
+            category_color = task.get('category_color')
+            if category_color:
+                try:
+                    color = QtGui.QColor(category_color)
+                    item.setForeground(color)
+                    print(f"   🎨 Текст окрашен в цвет категории: {category_color}")
+                except Exception as e:
+                    print(f"   ❌ Ошибка цвета: {e}")
+            
+            # 2. ДОБАВЛЯЕМ ВСПЛЫВАЮЩУЮ ПОДСКАЗКУ С ОПИСАНИЕМ
+            description = task.get('description', '')
+            if description:
+                # Создаем красивую всплывающую подсказку
+                tooltip_text = f"📝 Описание:\n{description}"
+                
+                # Добавляем информацию о категории
+                if category_name:
+                    tooltip_text += f"\n\n🏷️ Категория: {category_name}"
+                
+                # Добавляем приоритет
+                priority_text = {
+                    1: "🟢 Низкий",
+                    2: "🟡 Средний", 
+                    3: "🔴 Высокий"
+                }.get(task.get('priority', 1), "⚪ Не указан")
+                
+                tooltip_text += f"\n⚡ Приоритет: {priority_text}"
+                
+                # Добавляем дату создания
+                if task.get('created_at'):
+                    tooltip_text += f"\n📅 Создана: {task['created_at']}"
+                
+                item.setToolTip(tooltip_text)
+            
+            # 3. СТИЛЬ ДЛЯ ВЫПОЛНЕННЫХ ЗАДАЧ
+            if task['done']:
+                font = item.font()
+                font.setStrikeOut(True)
+                item.setFont(font)
+                # Для выполненных задач делаем более светлый цвет
+                current_color = item.foreground().color()
+                lighter_color = QtGui.QColor(
+                    min(current_color.red() + 100, 255),
+                    min(current_color.green() + 100, 255),
+                    min(current_color.blue() + 100, 255)
+                )
+                item.setForeground(lighter_color)
             
             self.ui.listWidget.addItem(item)
+        
+        print("=" * 50)
     
     def style_task_item(self, item, task):
         """Стилизация элемента задачи"""
@@ -130,92 +189,17 @@ class TaskDialog(QDialog):
     
     def show_enhanced_add_task_dialog(self):
         """Показ улучшенного диалога добавления задачи"""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Добавить задачу")
-        dialog.setModal(True)
-        dialog.resize(500, 400)
-        
-        layout = QVBoxLayout(dialog)
-        
-        # Название задачи
-        layout.addWidget(QLabel("Название задачи:*"))
-        title_input = QTextEdit()
-        title_input.setMaximumHeight(60)
-        title_input.setPlaceholderText("Введите название задачи...")
-        layout.addWidget(title_input)
-        
-        # Описание
-        layout.addWidget(QLabel("Описание:"))
-        desc_input = QTextEdit()
-        desc_input.setMaximumHeight(80)
-        desc_input.setPlaceholderText("Дополнительное описание...")
-        layout.addWidget(desc_input)
-        
-        # Настройки задачи
-        settings_layout = QHBoxLayout()
-        
-        # Категория
-        settings_layout.addWidget(QLabel("Категория:"))
-        category_combo = QComboBox()
-        category_combo.addItem("Без категории", None)
-        for category in self.categories:
-            category_combo.addItem(category['name'], category['id'])
-        settings_layout.addWidget(category_combo)
-        
-        # Приоритет
-        settings_layout.addWidget(QLabel("Приоритет:"))
-        priority_combo = QComboBox()
-        priority_combo.addItem("🔴 Высокий", 3)
-        priority_combo.addItem("🟡 Средний", 2)
-        priority_combo.addItem("🟢 Низкий", 1)
-        settings_layout.addWidget(priority_combo)
-        
-        layout.addLayout(settings_layout)
-        
-        # Чекбоксы
-        mandatory_checkbox = QCheckBox("🔸 Обязательная задача")
-        layout.addWidget(mandatory_checkbox)
-        
-        # Кнопки
-        button_layout = QHBoxLayout()
-        add_button = QPushButton("Добавить")
-        cancel_button = QPushButton("Отмена")
-        
-        add_button.clicked.connect(lambda: self.add_enhanced_task(
-            dialog, title_input.toPlainText(), desc_input.toPlainText(),
-            category_combo.currentData(), priority_combo.currentData(),
-            mandatory_checkbox.isChecked()
-        ))
-        cancel_button.clicked.connect(dialog.reject)
-        
-        button_layout.addWidget(add_button)
-        button_layout.addWidget(cancel_button)
-        layout.addLayout(button_layout)
-        
-        dialog.exec()
-    
-    def add_enhanced_task(self, dialog, title, description, category_id, priority, is_mandatory):
-        """Добавление задачи с расширенными параметрами"""
-        if not title.strip():
-            QMessageBox.warning(self, 'Ошибка', 'Введите название задачи')
-            return
-        
-        task_id = add_task(
-            user_id=self.user_id,
-            title=title.strip(),
-            task_date=self.current_date.toString('yyyy-MM-dd'),
-            description=description.strip(),
-            category_id=category_id,
-            priority=priority,
-            is_mandatory=is_mandatory
+        dialog = create_task_editor_dialog(
+            parent=self,
+            mode='add',
+            date=self.current_date,
+            user_id=self.user_id
         )
-
-        if task_id:
-            dialog.accept()
+        
+        if dialog.exec():
             self.load_tasks()
-        else:
-            QMessageBox.warning(self, 'Ошибка', 'Не удалось добавить задачу')
-    
+
+            
     def show_context_menu(self, position):
         """Показ контекстного меню для редактирования"""
         item = self.ui.listWidget.itemAt(position)
@@ -269,68 +253,27 @@ class TaskDialog(QDialog):
             self.change_priority(task_id, 1)
     
     def edit_enhanced_task(self, task_info, item):
-        """Редактирование задачи с расширенными параметрами"""
-        dialog = QDialog(self)
-        dialog.setWindowTitle("Редактировать задачу")
-        dialog.setModal(True)
-        dialog.resize(500, 300)
+        """Редактирование задачи - используем ОБЩУЮ функцию как в неделях"""
+        # Отладка: проверяем что приходит
+        print(f"🔍 TaskDialog edit: ID={task_info.get('id')}, Category ID={task_info.get('category_id')}, Name={task_info.get('category_name')}")
         
-        layout = QVBoxLayout(dialog)
+        # Используем ТУ ЖЕ функцию что и в WeekDialog
+        dialog = create_task_editor_dialog(
+            parent=self,
+            mode='edit',
+            task_data=task_info,  # ← передаем ВСЕ данные задачи
+            user_id=self.user_id
+        )
         
-        # Название задачи
-        layout.addWidget(QLabel("Название задачи:*"))
-        title_input = QTextEdit()
-        title_input.setPlainText(task_info['title'])
-        title_input.setMaximumHeight(60)
-        layout.addWidget(title_input)
-        
-        # Описание
-        layout.addWidget(QLabel("Описание:"))
-        desc_input = QTextEdit()
-        desc_input.setPlainText(task_info.get('description', ''))
-        desc_input.setMaximumHeight(80)
-        layout.addWidget(desc_input)
-        
-        # Настройки
-        settings_layout = QHBoxLayout()
-        
-        settings_layout.addWidget(QLabel("Категория:"))
-        category_combo = QComboBox()
-        category_combo.addItem("Без категории", None)
-        for category in self.categories:
-            category_combo.addItem(category['name'], category['id'])
-            if category['id'] == task_info.get('category_id'):
-                category_combo.setCurrentText(category['name'])
-        settings_layout.addWidget(category_combo)
-        
-        settings_layout.addWidget(QLabel("Приоритет:"))
-        priority_combo = QComboBox()
-        priority_combo.addItem("🔴 Высокий", 3)
-        priority_combo.addItem("🟡 Средний", 2)
-        priority_combo.addItem("🟢 Низкий", 1)
-        priority_combo.setCurrentIndex(3 - task_info.get('priority', 1))
-        settings_layout.addWidget(priority_combo)
-        
-        layout.addLayout(settings_layout)
-        
-        # Кнопки
-        button_layout = QHBoxLayout()
-        save_button = QPushButton("Сохранить")
-        cancel_button = QPushButton("Отмена")
-        
-        save_button.clicked.connect(lambda: self.update_enhanced_task(
-            dialog, task_info['id'], title_input.toPlainText(),
-            desc_input.toPlainText(), category_combo.currentData(),
-            priority_combo.currentData()
-        ))
-        cancel_button.clicked.connect(dialog.reject)
-        
-        button_layout.addWidget(save_button)
-        button_layout.addWidget(cancel_button)
-        layout.addLayout(button_layout)
-        
-        dialog.exec()
-    
+        if dialog.exec():
+            self.load_tasks()
+
+
+    def change_priority(self, task_id, priority):
+        """Изменение приоритета задачи"""
+        if update_task(self.user_id, task_id, priority=priority):  # ← user_id ПЕРВЫЙ для update_task
+            self.load_tasks()
+
     def update_enhanced_task(self, dialog, task_id, title, description, category_id, priority):
         """Обновление задачи с расширенными параметрами"""
         if not title.strip():
@@ -338,7 +281,8 @@ class TaskDialog(QDialog):
             return
         
         if update_task(
-            task_id=task_id,
+            user_id=self.user_id,  # ← user_id ПЕРВЫЙ
+            task_id=task_id,      # ← task_id ВТОРОЙ
             title=title.strip(),
             description=description.strip(),
             category_id=category_id,
@@ -348,11 +292,6 @@ class TaskDialog(QDialog):
             self.load_tasks()
         else:
             QMessageBox.warning(self, 'Ошибка', 'Не удалось обновить задачу')
-    
-    def change_priority(self, task_id, priority):
-        """Изменение приоритета задачи"""
-        if update_task(task_id=task_id, priority=priority):
-            self.load_tasks()
     
     def show_categories_dialog(self):
         """Показ диалога управления категориями"""
@@ -389,7 +328,6 @@ class TaskDialog(QDialog):
         
         QMessageBox.information(self, 'Статистика', stats_text.strip())
     
-    # Остальные методы остаются аналогичными, но с учетом новых возможностей
     def delete_task(self):
         """Удаление выбранной задачи"""
         current_item = self.ui.listWidget.currentItem()
@@ -411,30 +349,48 @@ class TaskDialog(QDialog):
         )
         
         if reply == QMessageBox.StandardButton.Yes:
-            remove_task(task_id, self.user_id)
+            remove_task(self.user_id, task_id)
             self.load_tasks()
-    
+        
     def toggle_task_done(self, index):
         """Отметка задачи как выполненной/невыполненной"""
         item = self.ui.listWidget.item(index.row())
         task_id = item.data(Qt.ItemDataRole.UserRole)
-        toggle_task_status(task_id)
+        toggle_task_status(task_id, self.user_id)  # ← task_id ПЕРВЫЙ!
         self.load_tasks()
-    
+
     def toggle_specific_task(self, item):
         """Изменение статуса задачи через контекстное меню"""
         task_id = item.data(Qt.ItemDataRole.UserRole)
-        toggle_task_status(task_id)
+        toggle_task_status(task_id, self.user_id)  # ← task_id ПЕРВЫЙ!
         self.load_tasks()
     
     def toggle_mandatory_status(self, task_info, item):
-        """Переключение статуса обязательной задачи"""
-        new_status = toggle_mandatory_status(task_info['id'])
-        if new_status is not False:
-            self.load_tasks()
+        """Переключение статуса обязательности задачи"""
+        print(f"🔄 Toggle mandatory для задачи {task_info['id']}")
+        
+        # Меняем в БД
+        new_status = toggle_mandatory_status(task_info['id'], self.user_id)
+        print(f"📊 toggle_mandatory_status вернул: {new_status} (type: {type(new_status)})")
+        
+        # ПРОВЕРЯЕМ НА None (ошибка), а не на False!
+        if new_status is not None:  # Изменил с "is not False" на "is not None"
+            updated_task_info = get_task(task_info['id'], self.user_id)
+            
+            if updated_task_info:
+                status = "✅" if updated_task_info['done'] else "❌"
+                mandatory_indicator = "🔸 " if updated_task_info['is_mandatory'] else ""
+                priority_indicator = "⚡" * updated_task_info.get('priority', 1)
+                
+                category_name = updated_task_info.get('category_name', '')
+                category_text = f" [{category_name}]" if category_name else ""
+                
+                task_text = f"{mandatory_indicator}{priority_indicator} {updated_task_info['title']} | {status}{category_text}"
+                item.setText(task_text)
+                
+                print(f"✅ UI обновлен: {task_text}")
         else:
             QMessageBox.warning(self, 'Ошибка', 'Не удалось изменить статус задачи')
-    
     def close_dialog(self):
         """Закрытие диалога"""
         self.close()

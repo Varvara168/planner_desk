@@ -21,7 +21,7 @@ def init_db():
     conn = sqlite3.connect(db_path)
     cursor = conn.cursor()
     
-    # Таблица пользователей
+    # 1. Таблица пользователей (первая - без зависимостей)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS users (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -31,27 +31,7 @@ def init_db():
         )
     ''')
     
-    # Таблица задач с привязкой к пользователю
-    cursor.execute('''
-    CREATE TABLE IF NOT EXISTS tasks (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER NOT NULL,
-        title TEXT NOT NULL,
-        task_date TEXT NOT NULL,
-        description TEXT,
-        priority INTEGER DEFAULT 1,
-        is_mandatory BOOLEAN DEFAULT FALSE,
-        done BOOLEAN DEFAULT FALSE,
-        category_id INTEGER,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        FOREIGN KEY (user_id) REFERENCES users (id),
-        FOREIGN KEY (category_id) REFERENCES categories (id)
-    )
-''')
-
-    
-    # Таблица категорий
+    # 2. Таблица категорий (вторая - зависит только от users)
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS categories (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -64,7 +44,26 @@ def init_db():
         )
     ''')
     
-    # Таблица шаблонов задач
+    # 3. Таблица задач (третья - зависит от users и categories)
+    cursor.execute('''
+        CREATE TABLE IF NOT EXISTS tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id INTEGER NOT NULL,
+            title TEXT NOT NULL,
+            task_date TEXT NOT NULL,
+            description TEXT,
+            priority INTEGER DEFAULT 1,
+            is_mandatory BOOLEAN DEFAULT FALSE,
+            done BOOLEAN DEFAULT FALSE,
+            category_id INTEGER,
+            created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            FOREIGN KEY (user_id) REFERENCES users (id),
+            FOREIGN KEY (category_id) REFERENCES categories (id)
+        )
+    ''')
+    
+    # 4. Остальные таблицы
     cursor.execute('''
     CREATE TABLE IF NOT EXISTS templates (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -75,9 +74,8 @@ def init_db():
         UNIQUE(user_id, name),
         FOREIGN KEY (user_id) REFERENCES users (id)
     )
-''')
+    ''')
     
-    # Таблица настроек пользователей
     cursor.execute('''
         CREATE TABLE IF NOT EXISTS user_settings (
             user_id INTEGER PRIMARY KEY,
@@ -135,7 +133,6 @@ def init_db():
     os.makedirs('data/exports', exist_ok=True)
     
     print(f"База данных {'создана' if not db_exists else 'подключена'}: {db_path}")
-
 # ========== ФУНКЦИИ ДЛЯ РАБОТЫ С ПОЛЬЗОВАТЕЛЯМИ ==========
 
 def hash_password(password: str) -> str:
@@ -278,7 +275,7 @@ def update_user_settings(user_id, auto_backup=None, notifications=None, week_sta
             UPDATE user_settings 
             SET {', '.join(updates)}
             WHERE user_id = ?
-        ''', params)
+        ''', params)  # ← Здесь execute есть
         
         conn.commit()
         return True
@@ -287,7 +284,6 @@ def update_user_settings(user_id, auto_backup=None, notifications=None, week_sta
         return False
     finally:
         conn.close()
-
 # ========== ФУНКЦИИ ДЛЯ РАБОТЫ С ЗАДАЧАМИ ==========
 
 def add_task(title, task_date, user_id, description="", category_id=None, priority=1, is_mandatory=False):
@@ -312,7 +308,6 @@ def add_task(title, task_date, user_id, description="", category_id=None, priori
         conn.close()
 
 
-
 def get_tasks_by_date(date_obj, user_id):
     """Получение задач по дате для конкретного пользователя"""
     conn = sqlite3.connect(get_db_path())
@@ -324,21 +319,55 @@ def get_tasks_by_date(date_obj, user_id):
         else:
             date_str = date_obj.strftime('%Y-%m-%d')
             
+        # ВАЖНО: Добавлено AND c.user_id = t.user_id
         cursor.execute('''
-            SELECT * FROM tasks 
-            WHERE task_date = ? AND user_id = ?
-            ORDER BY is_mandatory DESC, priority DESC, created_at
+            SELECT t.*, c.name as category_name, c.color as category_color 
+            FROM tasks t
+            LEFT JOIN categories c ON t.category_id = c.id AND c.user_id = t.user_id
+            WHERE t.task_date = ? AND t.user_id = ?
+            ORDER BY 
+                t.done ASC,
+                t.is_mandatory DESC, 
+                t.priority DESC, 
+                t.created_at
         ''', (date_str, user_id))
         
         tasks = cursor.fetchall()
-        return [{
-            'id': task[0], 'user_id': task[1], 'title': task[2],
-            'task_date': task[3], 'description': task[4], 'priority': task[5],
-            'is_mandatory': bool(task[6]), 'done': bool(task[7]),
-            'created_at': task[8], 'updated_at': task[9]
-        } for task in tasks]
+        
+        # ДЕТАЛЬНАЯ отладка
+        print(f"🔍 SQL вернул {len(tasks)} строк")
+        if tasks:
+            print(f"   Пример первой задачи:")
+            print(f"     Столбцов в строке: {len(tasks[0])}")
+            print(f"     ID задачи: {tasks[0][0]}")
+            print(f"     Category ID: {tasks[0][8]}")
+            print(f"     Category Name: '{tasks[0][11] if len(tasks[0]) > 11 else 'None'}'")
+            print(f"     Category Color: '{tasks[0][12] if len(tasks[0]) > 12 else 'None'}'")
+        
+        result = []
+        for task in tasks:
+            task_dict = {
+                'id': task[0], 'user_id': task[1], 'title': task[2],
+                'task_date': task[3], 'description': task[4], 'priority': task[5],
+                'is_mandatory': bool(task[6]), 'done': bool(task[7]),
+                'category_id': task[8],
+                'created_at': task[9], 'updated_at': task[10],
+                'category_name': task[11] if len(task) > 11 else None,
+                'category_color': task[12] if len(task) > 12 else None
+            }
+            
+            # Отладка для задач с категориями
+            if task_dict['category_id']:
+                print(f"   📍 Задача '{task_dict['title']}' → Category ID: {task_dict['category_id']}, Name: '{task_dict['category_name']}'")
+            
+            result.append(task_dict)
+            
+        return result
+        
     except Exception as e:
         print(f"Ошибка при получении задач: {e}")
+        import traceback
+        traceback.print_exc()
         return []
     finally:
         conn.close()
@@ -349,7 +378,6 @@ def get_tasks_by_week(start_date, user_id):
     cursor = conn.cursor()
     
     try:
-        # Вычисляем дату окончания недели (start_date + 6 дней)
         if hasattr(start_date, 'addDays'):
             end_date = start_date.addDays(6)
             start_date_str = start_date.toString('yyyy-MM-dd')
@@ -360,78 +388,133 @@ def get_tasks_by_week(start_date, user_id):
             end_date_str = end_date.strftime('%Y-%m-%d')
         
         cursor.execute('''
-            SELECT * FROM tasks 
-            WHERE task_date BETWEEN ? AND ? AND user_id = ?
-            ORDER BY task_date, is_mandatory DESC, priority DESC
+            SELECT t.*, c.name as category_name, c.color as category_color 
+            FROM tasks t
+            LEFT JOIN categories c ON t.category_id = c.id
+            WHERE t.task_date BETWEEN ? AND ? AND t.user_id = ?
+            ORDER BY 
+                t.task_date,
+                t.done ASC,  -- ← ВАЖНО: Сначала невыполненные
+                t.is_mandatory DESC, 
+                t.priority DESC
         ''', (start_date_str, end_date_str, user_id))
         
         tasks = cursor.fetchall()
         
-        # Группируем задачи по дням
         tasks_by_day = {}
         for task in tasks:
-            day = task[3]  # task_date
+            day = task[3]
             if day not in tasks_by_day:
                 tasks_by_day[day] = []
+            
             tasks_by_day[day].append({
                 'id': task[0], 'user_id': task[1], 'title': task[2],
                 'task_date': task[3], 'description': task[4], 'priority': task[5],
                 'is_mandatory': bool(task[6]), 'done': bool(task[7]),
-                'created_at': task[8], 'updated_at': task[9]
+                'category_id': task[8], 
+                'created_at': task[9], 'updated_at': task[10],
+                'category_name': task[11] if len(task) > 11 else None,
+                'category_color': task[12] if len(task) > 12 else None
             })
-        
+            
+        print(f"📅 Неделя: {len(tasks)} задач (выполненные в конце каждого дня)")
         return tasks_by_day
+        
     except Exception as e:
-        print(f"Ошибка при получении задач на неделю: {e}")
+        print(f"Ошибка: {e}")
         return {}
     finally:
         conn.close()
 
-def update_task(task_id, user_id, title=None, description=None, task_date=None, priority=None, is_mandatory=None):
+def update_task(user_id, task_id, title=None, description=None, task_date=None, 
+                priority=None, is_mandatory=None, category_id=None):
     """Обновление задачи"""
     conn = sqlite3.connect(get_db_path())
     cursor = conn.cursor()
     
     try:
+        # Проверяем, существует ли задача
+        cursor.execute('SELECT id FROM tasks WHERE id = ? AND user_id = ?', (task_id, user_id))
+        task_exists = cursor.fetchone()
+        
+        if not task_exists:
+            print(f"❌ Задача {task_id} не найдена для пользователя {user_id}")
+            return False
+        
+        print(f"✅ Задача {task_id} существует для пользователя {user_id}")
+        
         updates = []
         params = []
         
         if title is not None:
             updates.append("title = ?")
             params.append(title)
+            print(f"  - Обновляем title: {title}")
         if description is not None:
             updates.append("description = ?")
             params.append(description)
+            print(f"  - Обновляем description: {description}")
         if task_date is not None:
             updates.append("task_date = ?")
             params.append(task_date)
+            print(f"  - Обновляем task_date: {task_date}")
         if priority is not None:
             updates.append("priority = ?")
             params.append(priority)
+            print(f"  - Обновляем priority: {priority}")
         if is_mandatory is not None:
             updates.append("is_mandatory = ?")
             params.append(is_mandatory)
+            print(f"  - Обновляем is_mandatory: {is_mandatory}")
+        if category_id is not None:
+            updates.append("category_id = ?")
+            params.append(category_id)
+            print(f"  - Обновляем category_id: {category_id}")
+            
+        if not updates:
+            print("⚠️ Нет полей для обновления")
+            return False
             
         updates.append("updated_at = CURRENT_TIMESTAMP")
-        params.append(task_id)
-        params.append(user_id)  # Добавляем проверку пользователя
         
-        cursor.execute(f'''
+        # Добавляем параметры для WHERE
+        params.append(task_id)
+        params.append(user_id)
+        
+        # Собираем SQL запрос
+        sql = f'''
             UPDATE tasks 
             SET {', '.join(updates)}
             WHERE id = ? AND user_id = ?
-        ''', params)
+        '''
         
-        conn.commit()
-        print(f"Задача {task_id} обновлена")
-        return cursor.rowcount > 0
+        print(f"📋 SQL запрос: {sql}")
+        print(f"📦 Параметры: {params}")
+        
+        try:
+            cursor.execute(sql, params)
+            conn.commit()
+            
+            updated = cursor.rowcount > 0
+            print(f"🔄 Задача {task_id} обновлена: {updated} (строк изменено: {cursor.rowcount})")
+            
+            if cursor.rowcount == -1:
+                print("⚠️ rowcount = -1: возможно ошибка в SQL или таблица не поддерживает rowcount")
+                
+            return updated
+            
+        except sqlite3.Error as e:
+            print(f"❌ Ошибка SQL: {e}")
+            conn.rollback()
+            return False
+        
     except Exception as e:
-        print(f"Ошибка при обновлении задачи: {e}")
+        print(f"❌ Общая ошибка в update_task: {e}")
         return False
     finally:
         conn.close()
 
-def remove_task(task_id, user_id):
+def remove_task(user_id, task_id):
     """Удаление задачи по ID с проверкой пользователя"""
     conn = sqlite3.connect(get_db_path())
     cursor = conn.cursor()
@@ -523,17 +606,23 @@ def get_task(task_id, user_id):
     cursor = conn.cursor()
 
     try:
+        # ВАЖНО: Добавить JOIN с категориями!
         cursor.execute(
             '''
-            SELECT * FROM tasks
-            WHERE id = ? AND user_id = ?
+            SELECT t.*, c.name as category_name, c.color as category_color 
+            FROM tasks t
+            LEFT JOIN categories c ON t.category_id = c.id
+            WHERE t.id = ? AND t.user_id = ?
             ''',
             (task_id, user_id)
         )
 
         task = cursor.fetchone()
         if not task:
+            print(f"❌ Задача {task_id} не найдена для пользователя {user_id}")
             return None
+
+        print(f"✅ Задача {task_id} найдена, категория: ID={task[8]}, Name={task[11] if len(task) > 11 else 'None'}")
 
         return {
             'id': task[0],
@@ -544,15 +633,19 @@ def get_task(task_id, user_id):
             'priority': task[5],
             'is_mandatory': bool(task[6]),
             'done': bool(task[7]),
-            'created_at': task[8],
-            'updated_at': task[9]
+            'category_id': task[8],  # ← Теперь есть!
+            'created_at': task[9],
+            'updated_at': task[10],
+            'category_name': task[11] if len(task) > 11 else None,  # ← И это!
+            'category_color': task[12] if len(task) > 12 else None   # ← И это!
         }
     except Exception as e:
-        print(f"Ошибка при получении задачи: {e}")
+        print(f"❌ Ошибка при получении задачи: {e}")
+        import traceback
+        traceback.print_exc()
         return None
     finally:
         conn.close()
-
 
 def toggle_mandatory_status(task_id, user_id):
     """Переключение статуса обязательности задачи"""
@@ -565,21 +658,24 @@ def toggle_mandatory_status(task_id, user_id):
         result = cursor.fetchone()
         
         if result is None:
-            print(f"Задача {task_id} не найдена для пользователя {user_id}")
-            return False
+            print(f"❌ Задача {task_id} не найдена для пользователя {user_id}")
+            return None  # Возвращаем None при ошибке
             
-        current_status = result[0]
+        current_status = bool(result[0])  # Преобразуем в bool
+        new_status = not current_status
         
         # Инвертируем статус
         cursor.execute('UPDATE tasks SET is_mandatory = ? WHERE id = ? AND user_id = ?', 
-                      (not current_status, task_id, user_id))
+                      (new_status, task_id, user_id))
         conn.commit()
         
-        print(f"Статус обязательности задачи {task_id} изменен на {not current_status}")
-        return not current_status
+        print(f"✅ Статус обязательности задачи {task_id} изменен с {current_status} на {new_status}")
+        return new_status  # Всегда возвращаем НОВЫЙ статус (True или False)
+        
     except Exception as e:
-        print(f"Ошибка при изменении статуса обязательности: {e}")
-        return False
+        print(f"❌ Ошибка при изменении статуса обязательности: {e}")
+        return None  # Возвращаем None при ошибке
+        
     finally:
         conn.close()
 

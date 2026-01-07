@@ -1,26 +1,22 @@
 # Python
 __pycache__/
 *.pyc
-*.pyo
-*.pyd
-dist/
-build/
-data/backups/
-data/exports/
 
-# PyInstaller
-dist/
+# Build
 build/
+dist/
 *.spec
 
-# Базы данных и бэкапы
+# Database
 data/planner.db
-data/backups/
+data/*.db
+
+# Exports (можно оставить или убрать)
 data/exports/
 
-# IDE / OS
+# Executables
+*.exe
+
+# IDE
 .vscode/
 .idea/
-*.swp
-Thumbs.db
-.DS_Store
