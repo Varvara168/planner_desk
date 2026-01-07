@@ -144,7 +144,6 @@ class WeekDialog(QDialog):
         if is_mandatory and not is_done:
             bg_color = "#fdbb8f"  # Еще более красный
 
-        
         # Устанавливаем стиль фрейма задачи
         task_frame.setStyleSheet(f"""
             QFrame {{
@@ -185,9 +184,8 @@ class WeekDialog(QDialog):
         if is_done:
             text_style += " text-decoration: line-through;"
         task_text.setStyleSheet(text_style)
-        
-        # Категория справа (в плашке цвета категории)
-        if task.get('category_id'):  # Если есть category_id
+
+        if task.get('category_id'):  
             print(f"   ✅ У задачи есть category_id: {task.get('category_id')}")
             
             category_name = task.get('category_name', '')
@@ -209,7 +207,7 @@ class WeekDialog(QDialog):
                 category_bg = "#e0e0e0"
                 category_text_color = "#EEEEEE"
             
-            # ОБРЕЗАЕМ ДЛИННОЕ НАЗВАНИЕ
+            # обрезаем название
             display_name = category_name
             if len(display_name) > 10:
                 display_name = display_name[:8] + ".."
@@ -399,4 +397,5 @@ class WeekDialog(QDialog):
     
     def close_dialog(self):
         """Закрытие диалога"""
+
         self.accept()
